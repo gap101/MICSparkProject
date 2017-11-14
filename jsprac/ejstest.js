@@ -21,10 +21,10 @@ const { Console } = require('console');
  *
  * TODO - update to support multiple formats?
  */
-let dataTemplate = '<%= outputVar1 %> = <%=sparkVar%>.read.load("<%=inputVar1%>")';
+let dataTemplate = '<%= outputVar1 %> = <%=sparkVar%>.read.load("<%=inputVar1%>")';//outputVar1 is just a variable which can be controlled by us. We can just use the name of the node as the variable i guess?
 
 let linRegTemplate = 'lr = LinearRegression(maxIter=<%=inputVar1%>, regParam=<%=inputVar2%>, elasticNetParam=<%=inputVar3%>)' +
-    '\n<%=outputVar1%> = lr.fit(<%=inputVar4%>)';
+    '\n<%=outputVar1%> = lr.fit(<%=inputVar4%>)';// Shouldn't the inputVar4 be the outputvar1?? <%=outputVar1%> will be lrModel or something according to the example.
 
 let printToConsoleTemplate = 'print(<%=inputVar1%>.summary)';
 
@@ -41,11 +41,12 @@ let dataNode = {
 };
 
 let linRegNode = {
-    guid: "123456LinReg",
+    guid: "123456LinReg",// we can use the Path ID as the unique id as done in the fsm example.
     maxIter: 10,
     regParam: 0.3,
     elasticNetParam: 0.8,
-    inputDataNode: "123456data",  // TODO | need to find this programmatically
+    inputDataNode: "123456data",  // TODO | need to find this programmatically   
+    //I don't think we would need this.
     requirements: [
         "from pyspark.ml.regression import LinearRegression"
     ]
