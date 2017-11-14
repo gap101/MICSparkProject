@@ -1,0 +1,13 @@
+{
+  "components": {
+    "plugins": {
+      "SparkCodeGen": {
+        "src": "src/plugins/SparkCodeGen",
+        "test": "test/plugins/SparkCodeGen"
+      }
+    }
+  },
+  "dependencies": {
+    "plugins": {}
+  }
+}
