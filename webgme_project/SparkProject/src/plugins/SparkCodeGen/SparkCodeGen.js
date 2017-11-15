@@ -10,6 +10,19 @@
 const ejs = require('ejs');
 const TreeModel = require('tree-model');
 
+/////////////////////////////////////////////////////////////////////////
+/*
+    Things TODO:
+        - output file as artifact
+        - add import statements to META
+        - fill out EJS Templates of meta nodes
+        - clean and document code *Geoff
+        - add decorators
+        - add all attributes to all nodes
+ */
+
+
+
 define([
     'plugin/PluginConfig',
     'text!./metadata.json',
@@ -19,6 +32,116 @@ define([
     pluginMetadata,
     PluginBase) {
     'use strict';
+
+    function Node(data) {
+        this.data = data;
+        this.parent = null;
+        this.children = [];
+    }
+
+    function Tree(data) {
+        let node = new Node(data);
+        this._root = node;
+    }
+
+    Tree.prototype.traverseDF = function(callback) {
+
+        // this is a recurse and immediately-invoking function
+        (function recurse(currentNode) {
+            // step 2
+            for (let i = 0, length = currentNode.children.length; i < length; i++) {
+                // step 3
+                recurse(currentNode.children[i]);
+            }
+
+            // step 4
+            callback(currentNode);
+
+            // step 1
+        })(this._root);
+
+    };
+
+    Tree.prototype.traverseBF = function(callback) {
+        let queue = [];
+
+        queue.push(this._root);
+
+        let currentTree = queue.shift();
+
+        while(currentTree){
+            for (let i = 0, length = currentTree.children.length; i < length; i++) {
+                queue.push(currentTree.children[i]);
+            }
+
+            callback(currentTree);
+            currentTree = queue.shift();
+        }
+    };
+
+    Tree.prototype.contains = function(callback, traversal) {
+        traversal.call(this, callback);
+    };
+
+    Tree.prototype.add = function(data, toData, traversal) {
+        let child = new Node(data),
+            parent = null,
+            callback = function(node) {
+                if (node.data === toData) {
+                    parent = node;
+                }
+            };
+
+        this.contains(callback, traversal);
+
+        if (parent) {
+            parent.children.push(child);
+            child.parent = parent;
+        } else {
+            throw new Error('Cannot add node to a non-existent parent.');
+        }
+    };
+
+    Tree.prototype.remove = function(data, fromData, traversal) {
+        let tree = this,
+            parent = null,
+            childToRemove = null,
+            index;
+
+        let callback = function(node) {
+            if (node.data === fromData) {
+                parent = node;
+            }
+        };
+
+        this.contains(callback, traversal);
+
+        if (parent) {
+            index = findIndex(parent.children, data);
+
+            if (index === undefined) {
+                throw new Error('Node to remove does not exist.');
+            } else {
+                childToRemove = parent.children.splice(index, 1);
+            }
+        } else {
+            throw new Error('Parent does not exist.');
+        }
+
+        return childToRemove;
+    };
+
+    function findIndex(arr, data) {
+        let index;
+
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i].data === data) {
+                index = i;
+            }
+        }
+
+        return index;
+    }
 
     pluginMetadata = JSON.parse(pluginMetadata);
 
@@ -76,6 +199,8 @@ define([
 
         var componentDataDictionary = {};
 
+        var imports = "from pyspark.sql import SparkSession\n";
+
 
         function applyTemplate(componentData){
             return ejs.render(String(componentData.EJSTemplate), componentData);
@@ -100,14 +225,9 @@ define([
                         metaType !== "Output" &&
                         metaType !== "Port"){
 
-                    //{node: nodeObj,
-                    //  data: nodeData,
-                    //  connections:
-                    //      {src: [        // Connections this is a source for
-                    //          {guid: guid, src:, dst, srcPort, destPort},
-                    //       ],
-                    //      dest: []
-                    //  }
+
+                    // Retrieve the imports for this node
+                    imports += String(core.getAttribute(node, 'Imports')) + "\n";
 
                     allComponents.add(node);
                     componentDataDictionary[core.getGuid(node)] = {
@@ -116,10 +236,6 @@ define([
                     };
                 }
             }
-            // logger.info('all')
-            // logger.info('all Components: ', allComponents);
-            logger.info('all nodes data1: ', componentDataDictionary);
-
             // Add all connections
             for(let node of nodes){
                 let metaTypeNode = core.getMetaType(node);
@@ -165,13 +281,135 @@ define([
                 }
             }
 
+            logger.info('component data ', componentDataDictionary);
+
             return allComponents;
         }
 
 
         function getSequenceGraph(components, dataDictionary) {
 
-            let compNotInSeq = components.copy()
+            // create a set of the nodes not in the sequence
+            let compNotInSeq = new Set();
+            for (let node of components){
+                compNotInSeq.add(core.getGuid(node));
+            }
+
+            // create tree
+            let root = '';
+            let componentSequence = new Tree(root);
+
+            let currLevel = [];
+            let nodesInTree = new Set();
+            let delayNodes = new Set();
+
+            // get source nodes
+            for (let node of components){
+                let srcs = dataDictionary[core.getGuid(node)].connections.src;
+                let dsts = dataDictionary[core.getGuid(node)].connections.dst;
+                if(srcs.length > 0 && dsts.length === 0) {
+                    currLevel.push(node);
+                    nodesInTree.add(node);
+                    componentSequence.add(core.getGuid(node),
+                        root, componentSequence.traverseBF);
+
+                    compNotInSeq.delete(core.getGuid(node));
+                }
+            }
+
+            while(compNotInSeq.size > 0){
+                let newChildren = new Set();
+
+                for(let node of currLevel){
+                    let srcs = dataDictionary[core.getGuid(node)].connections.src;
+
+                    for (let child of srcs){
+                        newChildren.add(child.destNode);
+                    }
+                }
+
+                // add the delayed nodes:
+
+                let twoSets = [newChildren, delayNodes];
+
+                let validatedNodes = new Set();
+                let newDelayNodes = new Set();
+
+                for (let set of twoSets){
+                    for(let node of set){
+
+                        let isValid = true;
+                        let parents = [];
+                        let destConn = dataDictionary[core.getGuid(node)].connections.dst
+
+                        for (let conn of destConn){
+                            parents.push(conn.srcNode);
+                        }
+
+                        // check that all parents are in the tree
+                        for (let parent of parents){
+                            if (!nodesInTree.has(parent)){
+                                isValid = false;
+                            }
+                        }
+
+                        if (isValid){
+                            validatedNodes.add(node);
+                        }else {
+                            newDelayNodes.add(node);
+                        }
+                    }
+                }
+
+                let newCurLevel = [];
+
+                for(let node of validatedNodes){
+                    nodesInTree.add(node);
+                    newCurLevel.push(node);
+                    componentSequence.add(core.getGuid(node),
+                        core.getGuid(currLevel[0]),
+                        componentSequence.traverseBF);
+                    compNotInSeq.delete(core.getGuid(node));
+                }
+                delayNodes = newDelayNodes;
+                currLevel = newCurLevel;
+            }
+
+
+            // TODO | Remove
+            componentSequence.traverseBF(node => {
+                logger.info('sequence: ', node.data);
+            });
+
+
+
+            return componentSequence;
+
+        }
+
+        function createCodeFromSequence(sequence, dictionary){
+
+            let stringOutput = "";
+
+            // TODO | need to figure out imports
+
+            stringOutput += imports + "\n";
+
+            // TODO | get app name
+
+            let appname = "generatedApplicaton";
+
+            stringOutput += "spark = SparkSession.builder.appName(\"" + appname + "\").getOrCreate() \n \n"
+
+            sequence.traverseBF(node => {
+                logger.info('node.data', node.data);
+                if(node.data !== ''){
+                    stringOutput += applyTemplate(dictionary[node.data].data) + "\n\n";
+                }
+
+            });
+
+            return stringOutput;
 
         }
 
@@ -388,14 +626,21 @@ define([
                 // Get set of all node components and init componentDataDictionary:
                 let allComponents = getAllComponents(allNodes, nodeMap);
 
+                // sequnce
+                let sequence = getSequenceGraph(allComponents, componentDataDictionary);
+
+                let output = createCodeFromSequence(sequence, componentDataDictionary);
+
+                logger.info(output);
+
                 // TODO | test the templating
-                for(let node of allComponents){
-
-                    // logger.info('guid', String(core.getGuid(node)));
-                    // logger.info('data')
-
-                    logger.info(String(applyTemplate(componentDataDictionary[core.getGuid(node)].data)));
-                }
+                // for(let node of allComponents){
+                //
+                //     // logger.info('guid', String(core.getGuid(node)));
+                //     // logger.info('data')
+                //
+                //     logger.info(String(applyTemplate(componentDataDictionary[core.getGuid(node)].data)));
+                // }
 
                 // Find correct sequence of components
 
