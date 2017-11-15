@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "ejs": "^2.5.7",
-    "mongodb": "^2.2.33"
+    "mongodb": "^2.2.33",
+    "tree-model": "^1.0.6"
   }
 }

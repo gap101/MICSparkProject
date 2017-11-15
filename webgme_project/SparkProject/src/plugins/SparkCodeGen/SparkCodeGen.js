@@ -8,6 +8,7 @@
  */
 
 var ejs = require('ejs');
+var TreeModel = require('tree-model');
 
 define([
     'plugin/PluginConfig',
@@ -106,6 +107,117 @@ define([
         var metaArray = [];  // array of meta-nodes
         var artifact = null;
 
+        var allNodes = new Set();
+
+
+        function getAllComponents(nodes){
+
+            // logger.info("got in getAllComp()");
+
+            // logger.info("all nodes", nodes);
+
+            let allComponents = new Set();
+
+            for(let node of nodes){
+
+                // logger.info("nodes", node);
+
+                let metaTypeNode = core.getMetaType(node);
+                let metaType = core.getAttribute(metaTypeNode, 'name');
+
+                logger.info("meta type is ", metaType);
+
+                if (metaType !== "Model" &&
+                        metaType !== "Connection" &&
+                        metaType !== "Input" &&
+                        metaType !== "Output" &&
+                        metaType !== "Port"){
+
+                    allComponents.add(node);
+                }
+
+            }
+
+            logger.info("set of nodes", allComponents);
+
+            tree.testallcomp = [];
+
+            for(let node of allComponents){
+
+                tree.testallcomp.push(core.getAttribute(node, 'name'));
+
+            }
+
+            logger.info("all component names", tree.testallcomp);
+
+
+            return allComponents;
+
+        }
+
+
+        // function getSequenceGraph(nodes){
+        //
+        //     nodesNotinSequence = ;
+        //
+        //     tree = ;
+        //     root = ;
+        //
+        //     currLevel = [];
+        //     nodesInTree = set;
+        //     delayNodes = set;
+        //
+        //     for (all src nodes){
+        //         let node = root.addChild;
+        //         curlevel.add(node);
+        //         nodesInTree.add(node);
+        //     }
+        //
+        //     while (nodesNotinSequence.size != 0){
+        //
+        //         let newChildren = [];
+        //         for (node of curlevel){
+        //             newChildren.add({node: node.children, parent:node}); // todo | add in function, and add ports to tree
+        //             // TODO | won't work for multple children per port
+        //         }
+        //
+        //         newChidren += delayNodes;
+        //
+        //         let validatedNodes = []
+        //         let delayNodes = []
+        //
+        //         for (node of newChildren){
+        //             let parents = node.parents();
+        //             let isValid = True;
+        //             for (parent of parents){
+        //                 if parent not in nodesInTree: isValid = False
+        //             }
+        //
+        //             if (isValid) {
+        //                 validatedNodes.add(node)
+        //             } else {
+        //                 delayNodes.add(node)
+        //             }
+        //
+        //         }
+        //
+        //         let newCurLevel = []
+        //
+        //         for (node of validatedNodes){
+        //             newCurLevel.add(node.parent.addChild(node.node));
+        //         }
+        //
+        //         // update delayed nodes to all delayNodes
+        //
+        //         curlevel = newCurlevel;
+        //
+        //
+        //
+        //     }
+        //
+        //
+        // }
+
 
         // Check if the node is a meta node
         function isMeta(node) {
@@ -160,6 +272,9 @@ define([
         // Get the data for a node (except ROOT node)
         function getNodeData(node, nodeMap) {
 
+            allNodes.add(node);
+
+
             if(core.getAttribute(node, 'name') === "TrainingData"){
 
                 tree.madeit = "yes";
@@ -173,6 +288,8 @@ define([
                     guid: "123456data",
                     requirements: []
                 };
+
+
                 let sparkVar = 'spark';  // TODO | always start with a spark session being created. Need to have this be a node
 
                 // let dataInput = {
@@ -181,7 +298,7 @@ define([
                 //     FileLocation: dataNode.inputFile
                 // };
                 tree.templ = dataTemplate;
-                tree.check2 = ejs.render(dataTemplate, {outputVar1: "output", sparkVar: "spark", FileLocation: "file"});
+                tree.check2 = ejs.render(dataTemplate, {DataOut: "output", sparkVar: "spark", FileLocation: "file"});
 
             }
 
@@ -255,6 +372,8 @@ define([
             .loadNodeMap(activeNode)
             .then((nodeMap) => {
 
+
+
                 let rootChildren = core.getChildrenPaths(activeNode);
 
                 tree.children = {};
@@ -264,6 +383,8 @@ define([
 
                     let childNode = nodeMap[rootChildren[i]];
                     let childRelId = core.getRelid(childNode);
+
+                    allNodes.add(childNode);
 
                     tree.children[childRelId] = getNodeData(childNode, nodeMap);
 
@@ -280,9 +401,9 @@ define([
                         let sparkVar = 'spark';  // TODO | always start with a spark session being created. Need to have this be a node
 
                         let dataInput = {
-                            outputVar1: dataNode.guid,  // TODO | what if multiple 'outputs'?
+                            DataOut: dataNode.guid,  // TODO | what if multiple 'outputs'?
                             sparkVar: sparkVar,
-                            inputVar1: dataNode.inputFile
+                            FileLocation: dataNode.inputFile
                         };
                         tree.check2 = ejs.render(dataTemplate, dataInput);
 
@@ -290,20 +411,22 @@ define([
 
                 }
 
-                let dataTemplate = '<%= outputVar1 %> = <%=sparkVar%>.read.load(\"<%=inputVar1%>\")';
-                let dataNode = {
-                    inputFile: "example.json",
-                    guid: "123456data",
-                    requirements: []
-                };
-                let sparkVar = 'spark';  // TODO | always start with a spark session being created. Need to have this be a node
+                let test = getAllComponents(allNodes);
 
-                let dataInput = {
-                    outputVar1: dataNode.guid,  // TODO | what if multiple 'outputs'?
-                    sparkVar: sparkVar,
-                    inputVar1: dataNode.inputFile
-                };
-                tree.check = ejs.render(dataTemplate, dataInput);
+                // let dataTemplate = '<%= outputVar1 %> = <%=sparkVar%>.read.load(\"<%=inputVar1%>\")';
+                // let dataNode = {
+                //     inputFile: "example.json",
+                //     guid: "123456data",
+                //     requirements: []
+                // };
+                // let sparkVar = 'spark';  // TODO | always start with a spark session being created. Need to have this be a node
+                //
+                // let dataInput = {
+                //     DataOut: dataNode.guid,  // TODO | what if multiple 'outputs'?
+                //     sparkVar: sparkVar,
+                //     inputVar1: dataNode.inputFile
+                // };
+                // tree.check = ejs.render(dataTemplate, dataInput);
 
                 // logger.debug('tree', JSON.stringify(tree, null, 2));
                 // logger.debug(metaArray);
