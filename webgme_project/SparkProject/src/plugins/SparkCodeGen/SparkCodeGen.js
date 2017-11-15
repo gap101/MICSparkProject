@@ -7,8 +7,8 @@
  * properties and methods visit %host%/docs/source/PluginBase.html.
  */
 
-var ejs = require('ejs');
-var TreeModel = require('tree-model');
+const ejs = require('ejs');
+const TreeModel = require('tree-model');
 
 define([
     'plugin/PluginConfig',
@@ -55,44 +55,6 @@ define([
      *
      * @param {function(string, plugin.PluginResult)} callback - the result callback
      */
-    // SparkCodeGen.prototype.main = function (callback) {
-    //     // Use self to access core, project, result, logger etc from PluginBase.
-    //     // These are all instantiated at this point.
-    //     var self = this,
-    //         nodeObject;
-    //
-    //
-    //     // Using the logger.
-    //     self.logger.debug('This is a debug message.');
-    //     self.logger.info('This is an info message.');
-    //     self.logger.warn('This is a warning message.');
-    //     self.logger.error('This is an error message.');
-    //
-    //     // Using the coreAPI to make changes.
-    //
-    //     nodeObject = self.activeNode;
-    //
-    //     // (1)
-    //     //self.core.setAttribute(nodeObject, 'name', 'My new obj');
-    //     //self.core.setRegistry(nodeObject, 'position', {x: 70, y: 70});
-    //
-    //
-    //     // (2)
-    //     self.loadNodeMap(self.rootNode)
-    //         .then(function (nodes) {
-    //             self.logger.info(Object.keys(nodes));
-    //             self.result.setSuccess(true);
-    //             callback(null, self.result);
-    //         })
-    //         .catch(function (err) {
-    //             // (3)
-    //             self.logger.error(err.stack);
-    //             // Result success is false at invocation.
-    //             callback(err, self.result);
-    //         });
-    //
-    // };
-    
     SparkCodeGen.prototype.main = function (callback) {
         //define(['ejs'], function(ejs){
 
@@ -101,31 +63,36 @@ define([
         var activeNode = this.activeNode;
         var core = this.core;
         var logger = this.logger;
-        var tree = { // Root of node tree
+
+        var jsonTree = {
+            // Root of node jsonTree
             name: 'ROOT'
         };
         var metaArray = [];  // array of meta-nodes
         var artifact = null;
 
+        // Set of all nodes present in current context
         var allNodes = new Set();
 
+        var componentDataDictionary = {};
 
-        function getAllComponents(nodes){
 
-            // logger.info("got in getAllComp()");
+        function applyTemplate(componentData){
+            return ejs.render(String(componentData.EJSTemplate), componentData);
+        }
 
-            // logger.info("all nodes", nodes);
-
+        /**
+         * Return a set of all the names of Component nodes in current context
+         * @param nodes: all nodes in current context of any type
+         * @returns {Set}
+         */
+        function getAllComponents(nodes, nodeMap){
             let allComponents = new Set();
 
+            // Loop through all nodes
             for(let node of nodes){
-
-                // logger.info("nodes", node);
-
                 let metaTypeNode = core.getMetaType(node);
                 let metaType = core.getAttribute(metaTypeNode, 'name');
-
-                logger.info("meta type is ", metaType);
 
                 if (metaType !== "Model" &&
                         metaType !== "Connection" &&
@@ -133,91 +100,80 @@ define([
                         metaType !== "Output" &&
                         metaType !== "Port"){
 
+                    //{node: nodeObj,
+                    //  data: nodeData,
+                    //  connections:
+                    //      {src: [        // Connections this is a source for
+                    //          {guid: guid, src:, dst, srcPort, destPort},
+                    //       ],
+                    //      dest: []
+                    //  }
+
                     allComponents.add(node);
+                    componentDataDictionary[core.getGuid(node)] = {
+                        data: getComponentJsonData(node, nodeMap),
+                        connections: {src: [], dst: []}
+                    };
                 }
-
             }
+            // logger.info('all')
+            // logger.info('all Components: ', allComponents);
+            logger.info('all nodes data1: ', componentDataDictionary);
 
-            logger.info("set of nodes", allComponents);
+            // Add all connections
+            for(let node of nodes){
+                let metaTypeNode = core.getMetaType(node);
+                let metaType = core.getAttribute(metaTypeNode, 'name');
 
-            tree.testallcomp = [];
+                if (metaType === "Connection"){
 
-            for(let node of allComponents){
+                    let srcPath = core.getPointerPath(node, 'src');
+                    let dstPath = core.getPointerPath(node, 'dst');
 
-                tree.testallcomp.push(core.getAttribute(node, 'name'));
+                    if (srcPath && dstPath) {
 
+                        let connGuid = core.getGuid(node);
+
+                        let srcPortNode = nodeMap[srcPath];
+                        let dstPortNode = nodeMap[dstPath];
+
+                        let srcPortName = core.getAttribute(srcPortNode, 'name');
+                        let dstPortName = core.getAttribute(dstPortNode, 'name');
+
+                        let srcComp = core.getParent(srcPortNode);
+                        let dstComp = core.getParent(dstPortNode);
+
+                        componentDataDictionary[core.getGuid(srcComp)].connections.src.push({
+                            guid: connGuid,
+                            srcPort: srcPortName,
+                            srcNode: srcComp,
+                            destPort: dstComp,
+                            destNode: dstComp
+                        });
+
+                        componentDataDictionary[core.getGuid(dstComp)].connections.dst.push({
+                            guid: connGuid,
+                            srcPort: srcPortName,
+                            srcNode: srcComp,
+                            destPort: dstComp,
+                            destNode: dstComp
+                        });
+
+                        componentDataDictionary[core.getGuid(srcComp)].data[srcPortName] = connGuid;
+                        componentDataDictionary[core.getGuid(dstComp)].data[dstPortName] = connGuid;
+                    }
+                }
             }
-
-            logger.info("all component names", tree.testallcomp);
-
 
             return allComponents;
-
         }
 
 
-        // function getSequenceGraph(nodes){
-        //
-        //     nodesNotinSequence = ;
-        //
-        //     tree = ;
-        //     root = ;
-        //
-        //     currLevel = [];
-        //     nodesInTree = set;
-        //     delayNodes = set;
-        //
-        //     for (all src nodes){
-        //         let node = root.addChild;
-        //         curlevel.add(node);
-        //         nodesInTree.add(node);
-        //     }
-        //
-        //     while (nodesNotinSequence.size != 0){
-        //
-        //         let newChildren = [];
-        //         for (node of curlevel){
-        //             newChildren.add({node: node.children, parent:node}); // todo | add in function, and add ports to tree
-        //             // TODO | won't work for multple children per port
-        //         }
-        //
-        //         newChidren += delayNodes;
-        //
-        //         let validatedNodes = []
-        //         let delayNodes = []
-        //
-        //         for (node of newChildren){
-        //             let parents = node.parents();
-        //             let isValid = True;
-        //             for (parent of parents){
-        //                 if parent not in nodesInTree: isValid = False
-        //             }
-        //
-        //             if (isValid) {
-        //                 validatedNodes.add(node)
-        //             } else {
-        //                 delayNodes.add(node)
-        //             }
-        //
-        //         }
-        //
-        //         let newCurLevel = []
-        //
-        //         for (node of validatedNodes){
-        //             newCurLevel.add(node.parent.addChild(node.node));
-        //         }
-        //
-        //         // update delayed nodes to all delayNodes
-        //
-        //         curlevel = newCurlevel;
-        //
-        //
-        //
-        //     }
-        //
-        //
-        // }
+        function getSequenceGraph(components, dataDictionary) {
 
+            let compNotInSeq = components.copy()
+
+        }
 
         // Check if the node is a meta node
         function isMeta(node) {
@@ -269,15 +225,64 @@ define([
             metaArray.push(metaNodeData)
         }
 
-        // Get the data for a node (except ROOT node)
-        function getNodeData(node, nodeMap) {
+        /**
+         * add all nodes in the model to the set allNodes
+         * @param node
+         * @param nodeMap
+         */
+        function initAllNodes(node, nodeMap) {
 
             allNodes.add(node);
 
+            // Recurs. call for node's children.
+            let childrenPaths = core.getChildrenPaths(node);
+
+            logger.info('paths', childrenPaths);
+
+            for (let j = 0; j < childrenPaths.length; j += 1) {
+                let childNode = nodeMap[childrenPaths[j]];
+
+                initAllNodes(childNode, nodeMap);
+            }
+        }
+
+        /**
+         * Return the json data for a component
+         * @param node
+         * @param nodeMap
+         * @returns {{name: string, isMeta: string, metaType: string}}
+         */
+        function getComponentJsonData(node, nodeMap){
+            // set up part of JSON
+            let nodeData = {
+                name: '',
+                isMeta: '',
+                metaType: ''
+            };
+
+            nodeData.children = {};
+
+            // get all of the valid attributes for the node
+            let attrs = core.getValidAttributeNames(node);
+            for (let i = 0; i < attrs.length; i += 1) {
+                nodeData[attrs[i]] = core.getAttribute(node, attrs[i]);
+            }
+
+            // get node's metatype
+            let metaTypeOfNode = getMetaType(node);
+            nodeData.metaType = core.getAttribute(metaTypeOfNode, 'name');
+
+            nodeData.guid = core.getGuid(node);
+
+            return nodeData
+        }
+
+        // Return the data for a node (except ROOT node)
+        function getNodeData(node, nodeMap) {
 
             if(core.getAttribute(node, 'name') === "TrainingData"){
 
-                tree.madeit = "yes";
+                jsonTree.madeit = "yes";
 
                 let floc = core.getAttribute(node, 'FileLocation');
 
@@ -297,8 +302,8 @@ define([
                 //     sparkVar: sparkVar,
                 //     FileLocation: dataNode.inputFile
                 // };
-                tree.templ = dataTemplate;
-                tree.check2 = ejs.render(dataTemplate, {DataOut: "output", sparkVar: "spark", FileLocation: "file"});
+                jsonTree.templ = dataTemplate;
+                jsonTree.check2 = ejs.render(dataTemplate, {DataOut: "output", sparkVar: "spark", FileLocation: "file"});
 
             }
 
@@ -345,7 +350,7 @@ define([
             }
 
             // check to see if it's a connection
-            if (self.isMetaTypeOf(node, self.META.Flow) && !isMeta(node)) {
+            if (self.isMetaTypeOf(node, self.META.Connection) && !isMeta(node)) {
 
                 let srcPath = core.getPointerPath(node, 'src');
                 let dstPath = core.getPointerPath(node, 'dst');
@@ -372,46 +377,44 @@ define([
             .loadNodeMap(activeNode)
             .then((nodeMap) => {
 
-
-
                 let rootChildren = core.getChildrenPaths(activeNode);
 
-                tree.children = {};
-
-                // Get the data for all of the root's children
+                // Init the allNodes variable
                 for (let i = 0; i < rootChildren.length; i += 1) {
-
                     let childNode = nodeMap[rootChildren[i]];
-                    let childRelId = core.getRelid(childNode);
-
-                    allNodes.add(childNode);
-
-                    tree.children[childRelId] = getNodeData(childNode, nodeMap);
-
-                    if(getMetaType(childNode) == "TrainingData"){
-
-                        tree.madeit = "yes";
-
-                        let dataTemplate = core.getAttribute(childNode, 'EJSTemplate');
-                        let dataNode = {
-                            inputFile: core.getAttribute(childNode, 'FileLocation'),
-                            guid: "123456data",
-                            requirements: []
-                        };
-                        let sparkVar = 'spark';  // TODO | always start with a spark session being created. Need to have this be a node
-
-                        let dataInput = {
-                            DataOut: dataNode.guid,  // TODO | what if multiple 'outputs'?
-                            sparkVar: sparkVar,
-                            FileLocation: dataNode.inputFile
-                        };
-                        tree.check2 = ejs.render(dataTemplate, dataInput);
-
-                    }
-
+                    initAllNodes(childNode, nodeMap)
                 }
 
-                let test = getAllComponents(allNodes);
+                // Get set of all node components and init componentDataDictionary:
+                let allComponents = getAllComponents(allNodes, nodeMap);
+
+                // TODO | test the templating
+                for(let node of allComponents){
+
+                    // logger.info('guid', String(core.getGuid(node)));
+                    // logger.info('data')
+
+                    logger.info(String(applyTemplate(componentDataDictionary[core.getGuid(node)].data)));
+                }
+
+                // Find correct sequence of components
+
+
+                // jsonTree.children = {};
+                //
+                // // Get the data for all of the root's children
+                // for (let i = 0; i < rootChildren.length; i += 1) {
+                //
+                //     let childNode = nodeMap[rootChildren[i]];
+                //     let childRelId = core.getRelid(childNode);
+                //
+                //     allNodes.add(childNode);
+                //
+                //     jsonTree.children[childRelId] = getNodeData(childNode, nodeMap);
+                //
+                // }
+
+                // let test = getAllComponents(allNodes);
 
                 // let dataTemplate = '<%= outputVar1 %> = <%=sparkVar%>.read.load(\"<%=inputVar1%>\")';
                 // let dataNode = {
@@ -426,14 +429,14 @@ define([
                 //     sparkVar: sparkVar,
                 //     inputVar1: dataNode.inputFile
                 // };
-                // tree.check = ejs.render(dataTemplate, dataInput);
+                // jsonTree.check = ejs.render(dataTemplate, dataInput);
 
-                // logger.debug('tree', JSON.stringify(tree, null, 2));
+                // logger.debug('jsonTree', JSON.stringify(jsonTree, null, 2));
                 // logger.debug(metaArray);
 
                 artifact = self.blobClient.createArtifact('results');
                 return artifact.addFiles({
-                    'tree.json': JSON.stringify(tree, null, 2),
+                    'jsonTree.json': JSON.stringify(jsonTree, null, 2),
                     'meta.json': JSON.stringify(metaArray)
                 });
 
