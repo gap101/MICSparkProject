@@ -220,14 +220,15 @@ define([
                 let metaType = core.getAttribute(metaTypeNode, 'name');
 
                 if (metaType !== "Model" &&
-                        metaType !== "Connection" &&
-                        metaType !== "Input" &&
-                        metaType !== "Output" &&
-                        metaType !== "Port"){
+                    metaType !== "Connection" &&
+                    metaType !== "Input" &&
+                    metaType !== "Output" &&
+                    metaType !== "Port"){
 
 
                     // Retrieve the imports for this node
-                    imports += String(core.getAttribute(node, 'Imports')) + "\n";
+                    if(String(core.getAttribute(node, 'Imports')) !== '')
+                        imports += String(core.getAttribute(node, 'Imports')) + "\n";
 
                     allComponents.add(node);
                     componentDataDictionary[core.getGuid(node)] = {
@@ -248,7 +249,7 @@ define([
 
                     if (srcPath && dstPath) {
 
-                        let connGuid = core.getGuid(node);
+                        let connGuid = 'a' + String(core.getGuid(node)).replace(/-/g, "_");
 
                         let srcPortNode = nodeMap[srcPath];
                         let dstPortNode = nodeMap[dstPath];
@@ -399,12 +400,12 @@ define([
 
             let appname = "generatedApplicaton";
 
-            stringOutput += "spark = SparkSession.builder.appName(\"" + appname + "\").getOrCreate() \n \n"
+            stringOutput += "spark = SparkSession.builder.appName(\"" + appname + "\").getOrCreate() \n"
 
             sequence.traverseBF(node => {
                 logger.info('node.data', node.data);
                 if(node.data !== ''){
-                    stringOutput += applyTemplate(dictionary[node.data].data) + "\n\n";
+                    stringOutput += applyTemplate(dictionary[node.data].data) + "\n";
                 }
 
             });
@@ -681,8 +682,7 @@ define([
 
                 artifact = self.blobClient.createArtifact('results');
                 return artifact.addFiles({
-                    'jsonTree.json': JSON.stringify(jsonTree, null, 2),
-                    'meta.json': JSON.stringify(metaArray)
+                    'testPython.py': output
                 });
 
             }).then((metadataHash) => {
@@ -704,7 +704,7 @@ define([
         });
         //})};
     };
-    
+
 
     return SparkCodeGen;
 });
